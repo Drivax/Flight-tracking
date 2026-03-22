@@ -1,5 +1,49 @@
 'use strict';
 
+// ── Airline lookup (ICAO prefix → name) ───────────────────────────────────
+const AIRLINES = {
+  AAL: 'American Airlines', BAW: 'British Airways', AFR: 'Air France',
+  DLH: 'Lufthansa', UAE: 'Emirates', SIA: 'Singapore Airlines',
+  QFA: 'Qantas', UAL: 'United Airlines', DAL: 'Delta Air Lines',
+  SWA: 'Southwest Airlines', RYR: 'Ryanair', EZY: 'easyJet',
+  VLG: 'Vueling', IBE: 'Iberia', KLM: 'KLM Royal Dutch Airlines',
+  AUA: 'Austrian Airlines', THY: 'Turkish Airlines', SVA: 'Saudia',
+  ETH: 'Ethiopian Airlines', KQA: 'Kenya Airways', QTR: 'Qatar Airways',
+  ETD: 'Etihad Airways', FIN: 'Finnair', SAS: 'Scandinavian Airlines',
+  NAX: 'Norwegian Air Shuttle', TAP: 'TAP Air Portugal',
+  AEE: 'Aegean Airlines', CSN: 'China Southern Airlines',
+  CCA: 'Air China', CES: 'China Eastern Airlines', JAL: 'Japan Airlines',
+  ANA: 'All Nippon Airways', KAL: 'Korean Air', AAR: 'Asiana Airlines',
+  THA: 'Thai Airways', MAS: 'Malaysia Airlines', GIA: 'Garuda Indonesia',
+  PAL: 'Philippine Airlines', VNA: 'Vietnam Airlines', AIC: 'Air India',
+  GOI: 'IndiGo', JBU: 'JetBlue Airways', ASA: 'Alaska Airlines',
+  HAL: 'Hawaiian Airlines', FFT: 'Frontier Airlines', NKS: 'Spirit Airlines',
+  GTI: 'Atlas Air', UPS: 'UPS Airlines', FDX: 'FedEx Express',
+  DHL: 'DHL Air', CAL: 'China Airlines', EVA: 'EVA Air',
+  CPA: 'Cathay Pacific', AZA: 'ITA Airways', BEL: 'Brussels Airlines',
+  SWR: 'Swiss International Air Lines', WZZ: 'Wizz Air', TOM: 'TUI Airways',
+  EIN: 'Aer Lingus', RAM: 'Royal Air Maroc', MSR: 'EgyptAir',
+  ANZ: 'Air New Zealand', LAN: 'LATAM Airlines', TAM: 'LATAM Brasil',
+  GLO: 'Gol Airlines', AZU: 'Azul Brazilian Airlines', AVA: 'Avianca',
+  AMX: 'Aeromexico', VOI: 'Volaris', VIV: 'VivaAerobus',
+  SKW: 'SkyWest Airlines', ENY: 'Envoy Air', RPA: 'Republic Airways',
+  PDT: 'Piedmont Airlines', OZW: 'Helvetic Airways',
+  BCS: 'European Air Transport', ABX: 'ABX Air', CLX: 'Cargolux',
+  MPH: 'Martinair', TGW: 'Thomas Cook Airlines Scandinavia', EXS: 'Jet2',
+  MON: 'Monarch Airlines', BAG: 'Berlin Brandenburg', CFG: 'Condor',
+  HLF: 'Hapag-Lloyd Express', GWI: 'Germanwings', EWG: 'Eurowings',
+  DBA: 'dba', TUI: 'TUIfly', HHN: 'Hahn Air',
+  SXS: 'SunExpress Deutschland', SXD: 'SunExpress', TVS: 'Travel Service',
+  CSA: 'Czech Airlines', LOT: 'LOT Polish Airlines',
+  MAY: 'Malév Hungarian Airlines', ROT: 'TAROM', BUC: 'Blue Air',
+  WIF: 'Wideroe', NOZ: 'Norwegian Air Sweden', SKC: 'Sky Airlines'
+};
+
+function getAirline(callsign) {
+  if (!callsign || callsign.length < 3) return null;
+  return AIRLINES[callsign.slice(0, 3).toUpperCase()] || null;
+}
+
 // ── State ──────────────────────────────────────────────────────────────────
 let map, userMarker, circleLayer;
 const flightMarkers = new Map(); // icao24 → leaflet marker
@@ -270,22 +314,56 @@ function deselectFlight() {
   });
 }
 
-// ── Fetch flights from server ──────────────────────────────────────────────
+// ── Fetch flights directly from OpenSky Network ───────────────────────────
+const MIN_RADIUS_KM = 1;
+const MAX_RADIUS_KM = 50;
+
 async function fetchFlights(lat, lng) {
   showLoading(true);
-  const radius = document.getElementById('radius-input').value || 50;
+  const radiusKm = Math.min(Math.max(parseInt(document.getElementById('radius-input').value, 10) || MAX_RADIUS_KM, MIN_RADIUS_KM), MAX_RADIUS_KM);
+
+  // Approximate degrees per km (111 km ≈ 1° latitude; longitude degree shrinks with cosine of latitude)
+  const latDelta = radiusKm / 111.0;
+  const lonDelta = radiusKm / (111.0 * Math.cos((lat * Math.PI) / 180));
+  const lamin = lat - latDelta, lamax = lat + latDelta;
+  const lomin = lng - lonDelta, lomax = lng + lonDelta;
 
   try {
-    const res = await fetch(`/api/flights?lat=${lat}&lon=${lng}&radius=${radius}`);
-    const data = await res.json();
+    const res = await fetch(
+      `https://opensky-network.org/api/states/all?lamin=${lamin}&lamax=${lamax}&lomin=${lomin}&lomax=${lomax}`
+    );
 
     if (!res.ok) {
-      setStatus(`⚠️ ${data.error || 'Error fetching flights'}`);
+      setStatus(res.status === 429
+        ? '⚠️ OpenSky rate limit reached. Please wait a moment and try again.'
+        : '⚠️ Could not fetch flight data. Please try again shortly.');
       showLoading(false);
       return;
     }
 
-    currentFlights = data.flights || [];
+    const data = await res.json();
+    const states = data.states || [];
+
+    currentFlights = states
+      .map((s) => ({
+        icao24: s[0],
+        callsign: (s[1] || '').trim(),
+        originCountry: s[2],
+        longitude: s[5],
+        latitude: s[6],
+        baroAltitude: s[7],
+        onGround: s[8],
+        velocity: s[9],
+        heading: s[10],
+        verticalRate: s[11],
+        geoAltitude: s[13],
+        squawk: s[14]
+      }))
+      // Bounding box is a square approximation; haversine filter trims to the true circular radius
+      .filter((f) => !f.onGround && f.latitude != null && f.longitude != null
+                    && haversineKm(lat, lng, f.latitude, f.longitude) <= radiusKm)
+      .map((f) => ({ ...f, airline: getAirline(f.callsign) }));
+
     drawFlightMarkers(currentFlights);
     renderFlightList(currentFlights);
 
@@ -344,11 +422,11 @@ function useMyLocation() {
   );
 }
 
-// ── Image upload ───────────────────────────────────────────────────────────
+// ── Image upload (client-side, no server needed) ───────────────────────────
 function initUpload() {
-  const dropzone  = document.getElementById('dropzone');
-  const input     = document.getElementById('photo-input');
-  const preview   = document.getElementById('drop-preview');
+  const dropzone    = document.getElementById('dropzone');
+  const input       = document.getElementById('photo-input');
+  const preview     = document.getElementById('drop-preview');
   const placeholder = document.getElementById('drop-placeholder');
   const previewImg  = document.getElementById('preview-img');
   const removeBtn   = document.getElementById('remove-photo-btn');
@@ -370,56 +448,43 @@ function initUpload() {
     e.preventDefault();
     dropzone.style.borderColor = '';
     const file = e.dataTransfer.files[0];
-    if (file) uploadFile(file);
+    if (file) showPhoto(file);
   });
 
   input.addEventListener('change', () => {
-    if (input.files[0]) uploadFile(input.files[0]);
+    if (input.files[0]) showPhoto(input.files[0]);
   });
 
-  removeBtn.addEventListener('click', async () => {
+  removeBtn.addEventListener('click', () => {
     if (uploadedPhotoUrl) {
-      const filename = uploadedPhotoUrl.split('/').pop();
-      try { await fetch(`/api/upload/${filename}`, { method: 'DELETE' }); } catch (_) { /* ignore */ }
+      URL.revokeObjectURL(uploadedPhotoUrl);
       uploadedPhotoUrl = null;
     }
-    previewImg.src  = '';
-    preview.hidden  = true;
+    previewImg.src     = '';
+    preview.hidden     = true;
     placeholder.hidden = false;
-    input.value = '';
+    input.value        = '';
 
     // Remove photo from detail panel if open
-    const photoDiv = document.getElementById('detail-photo');
-    photoDiv.hidden = true;
+    document.getElementById('detail-photo').hidden = true;
   });
 
-  async function uploadFile(file) {
+  function showPhoto(file) {
     if (!file.type.startsWith('image/')) {
       alert('Please select an image file.');
       return;
     }
-    const fd = new FormData();
-    fd.append('image', file);
+    if (uploadedPhotoUrl) URL.revokeObjectURL(uploadedPhotoUrl);
+    uploadedPhotoUrl   = URL.createObjectURL(file);
+    previewImg.src     = uploadedPhotoUrl;
+    placeholder.hidden = true;
+    preview.hidden     = false;
+    setStatus('Photo ready — select a flight to associate it');
 
-    setStatus('Uploading photo…');
-    try {
-      const res  = await fetch('/api/upload', { method: 'POST', body: fd });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Upload failed');
-
-      uploadedPhotoUrl = data.url;
-      previewImg.src   = data.url;
-      placeholder.hidden = true;
-      preview.hidden     = false;
-      setStatus('Photo uploaded — select a flight to associate it');
-
-      // Show photo in open detail panel
-      if (selectedIcao) {
-        document.getElementById('detail-photo-img').src = data.url;
-        document.getElementById('detail-photo').hidden = false;
-      }
-    } catch (err) {
-      setStatus(`⚠️ Upload error: ${err.message}`);
+    // Show photo in open detail panel
+    if (selectedIcao) {
+      document.getElementById('detail-photo-img').src = uploadedPhotoUrl;
+      document.getElementById('detail-photo').hidden  = false;
     }
   }
 }
