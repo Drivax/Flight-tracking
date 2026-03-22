@@ -23,11 +23,11 @@
         <input  id="lat-input"    type="number" placeholder="Latitude"  step="0.0001" min="-90"  max="90"  />
         <input  id="lon-input"    type="number" placeholder="Longitude" step="0.0001" min="-180" max="180" />
         <select id="radius-input">
-          <option value="50">50 km</option>
-          <option value="100" selected>100 km</option>
-          <option value="150">150 km</option>
-          <option value="200">200 km</option>
-          <option value="300">300 km</option>
+          <option value="10">10 km</option>
+          <option value="20">20 km</option>
+          <option value="30">30 km</option>
+          <option value="40">40 km</option>
+          <option value="50" selected>50 km</option>
         </select>
         <button id="geo-btn"    class="btn btn-primary">📍 My Location</button>
         <button id="search-btn" class="btn btn-secondary">🔍 Search</button>
@@ -104,6 +104,7 @@
         <div class="detail-row"><span class="dl">Vertical Rate</span>    <span id="d-vrate"     class="dv">—</span></div>
         <div class="detail-row"><span class="dl">Squawk</span>           <span id="d-squawk"    class="dv">—</span></div>
         <div class="detail-row"><span class="dl">Distance</span>         <span id="d-distance"  class="dv">—</span></div>
+        <div class="detail-row"><span class="dl">Direction from you</span><span id="d-bearing"   class="dv">—</span></div>
 
         <div id="detail-links">
           <a id="link-fr24" href="#" target="_blank" rel="noopener" class="btn btn-outline">🌐 FlightRadar24</a>
