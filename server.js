@@ -183,11 +183,24 @@ function getAirline(callsign) {
 }
 
 // ---------------------------------------------------------------------------
+// Haversine distance helper (km)
+// ---------------------------------------------------------------------------
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// ---------------------------------------------------------------------------
 // GET /api/flights
-// Query params: lat, lon, radius (km, default 100)
+// Query params: lat, lon, radius (km, default 50, max 50)
 // ---------------------------------------------------------------------------
 app.get('/api/flights', flightsLimiter, async (req, res) => {
-  const { lat, lon, radius = '100' } = req.query;
+  const { lat, lon, radius = '50' } = req.query;
 
   if (!lat || !lon) {
     return res.status(400).json({ error: 'Query parameters "lat" and "lon" are required.' });
@@ -195,7 +208,7 @@ app.get('/api/flights', flightsLimiter, async (req, res) => {
 
   const latF = parseFloat(lat);
   const lonF = parseFloat(lon);
-  const radiusKm = Math.min(Math.max(parseFloat(radius) || 100, 10), 500);
+  const radiusKm = Math.min(Math.max(parseFloat(radius) || 50, 1), 50);
 
   if (isNaN(latF) || isNaN(lonF) || latF < -90 || latF > 90 || lonF < -180 || lonF > 180) {
     return res.status(400).json({ error: 'Invalid coordinates.' });
@@ -234,7 +247,8 @@ app.get('/api/flights', flightsLimiter, async (req, res) => {
         geoAltitude: s[13],   // metres
         squawk: s[14]
       }))
-      .filter((f) => !f.onGround && f.latitude != null && f.longitude != null)
+      .filter((f) => !f.onGround && f.latitude != null && f.longitude != null
+                  && haversineKm(latF, lonF, f.latitude, f.longitude) <= radiusKm)
       .map((f) => ({
         ...f,
         airline: getAirline(f.callsign)

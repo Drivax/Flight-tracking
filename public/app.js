@@ -20,6 +20,18 @@ function headingLabel(deg) {
   return `${Math.round(deg)}° (${dirs[Math.round(deg / 45) % 8]})`;
 }
 
+function bearingLabel(lat1, lon1, lat2, lon2) {
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const lat1Rad = lat1 * Math.PI / 180;
+  const lat2Rad = lat2 * Math.PI / 180;
+  const y = Math.sin(dLon) * Math.cos(lat2Rad);
+  const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) -
+            Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon);
+  const bearing = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+  const dirs = ['N','NE','E','SE','S','SW','W','NW'];
+  return dirs[Math.round(bearing / 45) % 8];
+}
+
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -69,7 +81,7 @@ function placeUserMarker(lat, lng) {
   }
 
   if (circleLayer) map.removeLayer(circleLayer);
-  const radiusKm = parseInt(document.getElementById('radius-input').value, 10) || 100;
+  const radiusKm = parseInt(document.getElementById('radius-input').value, 10) || 50;
   circleLayer = L.circle([lat, lng], {
     radius: radiusKm * 1000,
     color: 'var(--accent)',
@@ -153,6 +165,9 @@ function renderFlightList(flights) {
     const dist = userLocation
       ? `${Math.round(haversineKm(userLocation.lat, userLocation.lng, f.latitude, f.longitude))} km`
       : '';
+    const bearing = userLocation
+      ? bearingLabel(userLocation.lat, userLocation.lng, f.latitude, f.longitude)
+      : '';
 
     const li = document.createElement('li');
     li.className = `flight-card${f.icao24 === selectedIcao ? ' active' : ''}`;
@@ -166,6 +181,7 @@ function renderFlightList(flights) {
       <div class="fc-meta">
         ${spd ? `<span>🚀 ${spd}</span>` : ''}
         ${dist ? `<span>📍 ${dist}</span>` : ''}
+        ${bearing ? `<span>🧭 ${bearing}</span>` : ''}
         <span>🌍 ${f.originCountry || '—'}</span>
       </div>`;
     li.addEventListener('click', () => selectFlight(f.icao24));
@@ -217,6 +233,9 @@ function selectFlight(icao24) {
   document.getElementById('d-vrate').textContent     = vrate;
   document.getElementById('d-squawk').textContent    = f.squawk         || '—';
   document.getElementById('d-distance').textContent  = dist;
+  document.getElementById('d-bearing').textContent   = userLocation
+    ? bearingLabel(userLocation.lat, userLocation.lng, f.latitude, f.longitude)
+    : '—';
 
   // External links
   const cs = encodeURIComponent((f.callsign || f.icao24).toLowerCase());
@@ -254,7 +273,7 @@ function deselectFlight() {
 // ── Fetch flights from server ──────────────────────────────────────────────
 async function fetchFlights(lat, lng) {
   showLoading(true);
-  const radius = document.getElementById('radius-input').value || 100;
+  const radius = document.getElementById('radius-input').value || 50;
 
   try {
     const res = await fetch(`/api/flights?lat=${lat}&lon=${lng}&radius=${radius}`);
