@@ -17,13 +17,13 @@ A functional web application that identifies flights overhead based on your loca
 - **External links** to FlightRadar24, FlightAware, and OpenSky for additional details
 - Responsive design — works on mobile and desktop
 
-## 🌐 Access the App (Free, no setup)
+## 🌐 Access the App (Free, no login)
 
-Deploy your own instance for free on Render — works on any cellphone or desktop browser:
+The app is hosted on **GitHub Pages** — open it instantly on any device, no account or setup required:
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Drivax/Flight-tracking)
+👉 **[https://drivax.github.io/Flight-tracking/](https://drivax.github.io/Flight-tracking/)**
 
-Once deployed, Render gives you a public URL like `https://flight-tracker-xxxx.onrender.com` that you can open on any device.
+Flight data is fetched directly from the [OpenSky Network](https://opensky-network.org/) public API in your browser — no backend server needed.
 
 ## Quick Start
 
